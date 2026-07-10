@@ -104,4 +104,6 @@ makes this sellable without a Google quota-extension audit.
       Icon Method verification steps 2–3 (2026-07-10, live-tested)
 - [x] `search_niche_sweep`: rotate one phrase template across hobby clusters
       (2026-07-10, live-tested: 2-niche sweep = 210 units, cross-niche ranking works)
-- [ ] List on Smithery (free discovery) + MCPize (hosting/billing, 85% rev share)
+- [ ] List on Smithery — prep done 2026-07-10 (repo public + MIT, `manifest.json`,
+      `.mcpb` bundle packed with BYO-key `user_config`); awaiting `smithery login`
+      + publish. MCPize deferred (their SDK/hosting required; actual rev share 80%).
