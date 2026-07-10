@@ -6,6 +6,8 @@ const API_BASE = "https://www.googleapis.com/youtube/v3";
 export interface VideoStats {
   videoId: string;
   title: string;
+  description: string;
+  tags: string[];
   channelId: string;
   channelTitle: string;
   publishedAt: string;
@@ -128,6 +130,8 @@ export async function getVideoStats(
       out.set(it.id, {
         videoId: it.id,
         title: it.snippet.title,
+        description: it.snippet.description ?? "",
+        tags: it.snippet.tags ?? [],
         channelId: it.snippet.channelId,
         channelTitle: it.snippet.channelTitle,
         publishedAt: it.snippet.publishedAt,

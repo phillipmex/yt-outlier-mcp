@@ -30,11 +30,42 @@ interface OutlierResult {
   viewsToSubsRatio: number;
   channelMedianViews: number | null;
   outlierFactor: number | null; // views / median of channel's other recent uploads
+  queryRelevance: number; // fraction of query terms found in title/description/tags
   commentsEnabled: boolean;
   channelVideoCount: number;
 }
 
-const server = new McpServer({ name: "yt-outlier-finder", version: "0.3.0" });
+// Function words that carry no topical signal in a search phrase
+const STOPWORDS = new Set([
+  "a", "an", "the", "to", "for", "of", "in", "on", "at", "and", "or",
+  "how", "what", "why", "when", "with", "you", "your", "is", "are", "do",
+]);
+
+/**
+ * Fraction of the query's meaningful terms that appear in the video's
+ * title/description/tags. search.list sometimes returns videos that only
+ * loosely match the query; this scores how on-topic each result really is.
+ */
+function queryRelevanceScore(
+  query: string,
+  video: { title: string; description: string; tags: string[] },
+): number {
+  const terms = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+  if (terms.length === 0) return 1;
+
+  const haystack =
+    `${video.title} ${video.description} ${video.tags.join(" ")}`.toLowerCase();
+  const matched = terms.filter(
+    // match the term or its naive singular ("mistakes" should hit "mistake")
+    (t) => haystack.includes(t) || (t.endsWith("s") && haystack.includes(t.slice(0, -1))),
+  ).length;
+  return Math.round((matched / terms.length) * 100) / 100;
+}
+
+const server = new McpServer({ name: "yt-outlier-finder", version: "0.4.0" });
 
 const MISSING_KEY = {
   isError: true as const,
@@ -86,6 +117,7 @@ interface OutlierSearchOpts {
   minRatio: number;
   publishedWithinDays: number;
   minOutlierFactor: number;
+  minQueryRelevance: number;
   maxResults: number;
 }
 
@@ -116,14 +148,20 @@ async function runOutlierSearch(
   ]);
 
   const candidates = [...videos.values()]
-    .map((v) => ({ video: v, channel: channels.get(v.channelId) }))
+    .map((v) => ({
+      video: v,
+      channel: channels.get(v.channelId),
+      relevance: queryRelevanceScore(opts.query, v),
+    }))
     .filter(
-      (c): c is { video: (typeof c)["video"]; channel: NonNullable<(typeof c)["channel"]> } =>
+      (c): c is { video: (typeof c)["video"]; channel: NonNullable<(typeof c)["channel"]>; relevance: number } =>
         c.channel !== undefined &&
         c.channel.subs !== null && // hidden sub counts can't prove the ratio
         c.channel.subs <= opts.maxSubs &&
         c.video.views >= opts.minViews &&
-        c.video.views / Math.max(c.channel.subs, 1) >= opts.minRatio,
+        c.video.views / Math.max(c.channel.subs, 1) >= opts.minRatio &&
+        // relevance check is free — do it before the paid baseline checks
+        c.relevance >= opts.minQueryRelevance,
     )
     .sort(
       (a, b) =>
@@ -137,7 +175,7 @@ async function runOutlierSearch(
   //    other recent uploads (a big video on a channel whose EVERY video is
   //    big proves nothing about the format).
   const outliers: OutlierResult[] = [];
-  for (const { video, channel } of candidates) {
+  for (const { video, channel, relevance } of candidates) {
     if (outliers.length >= opts.maxResults) break;
 
     let medianViews: number | null = null;
@@ -173,6 +211,7 @@ async function runOutlierSearch(
         Math.round((video.views / Math.max(channel.subs!, 1)) * 10) / 10,
       channelMedianViews: medianViews,
       outlierFactor: factor === null ? null : Math.round(factor * 10) / 10,
+      queryRelevance: relevance,
       commentsEnabled: video.comments !== null,
       channelVideoCount: channel.videoCount,
     });
@@ -229,6 +268,16 @@ server.registerTool(
         .describe(
           "Video views must be at least this multiple of the channel's median recent-upload views",
         ),
+      minQueryRelevance: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(0)
+        .describe(
+          "Drop results whose title/description/tags match less than this " +
+            "fraction of the query terms (0 = off; 0.5 is a good noise cut). " +
+            "Every result carries its queryRelevance score either way.",
+        ),
       maxResults: z
         .number()
         .int()
@@ -258,6 +307,7 @@ server.registerTool(
                 minRatio: args.minRatio,
                 publishedWithinDays: args.publishedWithinDays,
                 minOutlierFactor: args.minOutlierFactor,
+                minQueryRelevance: args.minQueryRelevance,
               },
               outliers,
               quotaUnitsUsed: quota.units,
@@ -540,6 +590,16 @@ server.registerTool(
         .describe(
           "Video views must be at least this multiple of the channel's median recent-upload views",
         ),
+      minQueryRelevance: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(0)
+        .describe(
+          "Drop results whose title/description/tags match less than this " +
+            "fraction of the query terms (0 = off; 0.5 is a good noise cut). " +
+            "Every result carries its queryRelevance score either way.",
+        ),
       maxResultsPerNiche: z
         .number()
         .int()
@@ -572,6 +632,7 @@ server.registerTool(
           minRatio: args.minRatio,
           publishedWithinDays: args.publishedWithinDays,
           minOutlierFactor: args.minOutlierFactor,
+          minQueryRelevance: args.minQueryRelevance,
           maxResults: args.maxResultsPerNiche,
         });
         perNiche.push({ niche, query, outliers });
@@ -606,6 +667,7 @@ server.registerTool(
                 minRatio: args.minRatio,
                 publishedWithinDays: args.publishedWithinDays,
                 minOutlierFactor: args.minOutlierFactor,
+                minQueryRelevance: args.minQueryRelevance,
               },
               nichesSwept: perNiche.length,
               nichesRequested: args.niches.length,

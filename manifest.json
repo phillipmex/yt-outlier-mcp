@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "yt-outlier-mcp",
   "display_name": "YouTube Outlier Finder",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Find YouTube outlier videos: small channels (≤100K subs) with one video massively outperforming their baseline (≥5:1 views:subs) — evidence of a replicable format.",
   "long_description": "Automates the Icon Method for YouTube content research. find_outliers locates videos on small channels that hugely outperform both the channel's subscriber base and its own median recent uploads — the signature of a format the algorithm rewarded, replicable by a new channel. get_video_structure extracts the copyable format (chapters, tags, transcript); get_comment_signal reads demand resonance from top comments; search_niche_sweep ranks a phrase template across up to 8 niches to find which hobby cluster has a breakout format right now. Bring your own YouTube Data API v3 key (free 10,000 units/day ≈ 75-90 searches).",
   "author": {
@@ -32,6 +32,7 @@
           "minRatio": { "type": "number", "default": 5 },
           "publishedWithinDays": { "type": "integer", "default": 365 },
           "minOutlierFactor": { "type": "number", "default": 3 },
+          "minQueryRelevance": { "type": "number", "default": 0 },
           "maxResults": { "type": "integer", "default": 10 }
         },
         "required": ["query"]
@@ -75,6 +76,7 @@
           "minRatio": { "type": "number", "default": 5 },
           "publishedWithinDays": { "type": "integer", "default": 365 },
           "minOutlierFactor": { "type": "number", "default": 3 },
+          "minQueryRelevance": { "type": "number", "default": 0 },
           "maxResultsPerNiche": { "type": "integer", "default": 5 }
         },
         "required": ["template", "niches"]

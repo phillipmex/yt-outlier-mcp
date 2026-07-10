@@ -20,6 +20,7 @@ one MCP tool. Origin: idea #2 in `_ideas/next-batch.html` (paid MCP servers).
 | `minRatio` | 5 | Min views:subs ratio |
 | `publishedWithinDays` | 365 | Freshness window (older outliers are stale evidence) |
 | `minOutlierFactor` | 3 | Video views vs. median of channel's other recent uploads |
+| `minQueryRelevance` | 0 (off) | Min fraction of query terms found in title/description/tags; `0.5` cuts off-topic noise |
 | `maxResults` | 10 | Cap on returned outliers |
 
 Pipeline per call: `search.list` (order=viewCount, the expensive call) →
@@ -29,7 +30,10 @@ median recent-upload views (the outlier-vs-baseline check that separates a
 breakout format from a big channel's normal video).
 
 Output per outlier: URL, views, subs, ratio, channel median views,
-outlier factor, comments-enabled flag (comments are the manual demand-signal
+outlier factor, `queryRelevance` (fraction of query terms found in
+title/description/tags — always reported, filtered only if
+`minQueryRelevance` > 0; costs zero extra quota since the snippet is already
+fetched), comments-enabled flag (comments are the manual demand-signal
 step), channel video count, plus total quota units consumed.
 
 ## Tool: `get_video_structure`
@@ -75,7 +79,7 @@ quota-exhausted error aborts the remaining niches with a note.
 | `template` | (required) | Phrase containing `{niche}`, e.g. `"beginner mistakes {niche}"` |
 | `niches` | (required) | 1–8 niches to substitute |
 | `maxResultsPerNiche` | 5 | Cap per niche |
-| filters | same as `find_outliers` | `maxSubs`, `minViews`, `minRatio`, `publishedWithinDays`, `minOutlierFactor` |
+| filters | same as `find_outliers` | `maxSubs`, `minViews`, `minRatio`, `publishedWithinDays`, `minOutlierFactor`, `minQueryRelevance` |
 
 ## Setup
 
