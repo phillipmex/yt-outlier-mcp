@@ -104,6 +104,15 @@ makes this sellable without a Google quota-extension audit.
       Icon Method verification steps 2–3 (2026-07-10, live-tested)
 - [x] `search_niche_sweep`: rotate one phrase template across hobby clusters
       (2026-07-10, live-tested: 2-niche sweep = 210 units, cross-niche ranking works)
-- [ ] List on Smithery — prep done 2026-07-10 (repo public + MIT, `manifest.json`,
-      `.mcpb` bundle packed with BYO-key `user_config`); awaiting `smithery login`
-      + publish. MCPize deferred (their SDK/hosting required; actual rev share 80%).
+- [x] List on Smithery (2026-07-10): live at
+      [smithery.ai/servers/phillipmex3/yt-outlier-mcp](https://smithery.ai/servers/phillipmex3/yt-outlier-mcp).
+      MCPize deferred (their SDK/hosting required; actual rev share 80%, not the
+      85% marketed) — revisit if Smithery shows install signal.
+
+## Publishing note
+
+Smithery's registry requires each `tools[]` entry in `manifest.json` to carry an
+`inputSchema`, but `npx @anthropic-ai/mcpb pack` rejects that key as invalid.
+Workaround used here: pack the bundle from a manifest **without** the schemas,
+then replace `manifest.json` inside the `.mcpb` (it's a plain zip) with the
+schema-bearing version in this repo before `smithery mcp publish`.

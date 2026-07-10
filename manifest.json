@@ -20,10 +20,66 @@
     }
   },
   "tools": [
-    { "name": "find_outliers", "description": "Search a topic phrase for videos on small channels that hugely outperform the channel's subs and its own recent uploads" },
-    { "name": "get_video_structure", "description": "Extract a video's replicable format: duration, chapters, tags, description, transcript" },
-    { "name": "get_comment_signal", "description": "Top relevance-ordered comments plus question/demand-phrase counts (unmet-demand signal)" },
-    { "name": "search_niche_sweep", "description": "Run the outlier search across up to 8 niches from one phrase template and rank hits across all of them" }
+    {
+      "name": "find_outliers",
+      "description": "Search a topic phrase for videos on small channels that hugely outperform the channel's subs and its own recent uploads",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "Topic search phrase" },
+          "maxSubs": { "type": "integer", "default": 100000 },
+          "minViews": { "type": "integer", "default": 100000 },
+          "minRatio": { "type": "number", "default": 5 },
+          "publishedWithinDays": { "type": "integer", "default": 365 },
+          "minOutlierFactor": { "type": "number", "default": 3 },
+          "maxResults": { "type": "integer", "default": 10 }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "get_video_structure",
+      "description": "Extract a video's replicable format: duration, chapters, tags, description, transcript",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "video": { "type": "string", "description": "Video ID or URL" },
+          "includeTranscript": { "type": "boolean", "default": true },
+          "maxTranscriptChars": { "type": "integer", "default": 15000 }
+        },
+        "required": ["video"]
+      }
+    },
+    {
+      "name": "get_comment_signal",
+      "description": "Top relevance-ordered comments plus question/demand-phrase counts (unmet-demand signal)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "video": { "type": "string", "description": "Video ID or URL" },
+          "maxComments": { "type": "integer", "default": 30 }
+        },
+        "required": ["video"]
+      }
+    },
+    {
+      "name": "search_niche_sweep",
+      "description": "Run the outlier search across up to 8 niches from one phrase template and rank hits across all of them",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "template": { "type": "string", "description": "Phrase containing {niche}" },
+          "niches": { "type": "array", "items": { "type": "string" }, "maxItems": 8 },
+          "maxSubs": { "type": "integer", "default": 100000 },
+          "minViews": { "type": "integer", "default": 100000 },
+          "minRatio": { "type": "number", "default": 5 },
+          "publishedWithinDays": { "type": "integer", "default": 365 },
+          "minOutlierFactor": { "type": "number", "default": 3 },
+          "maxResultsPerNiche": { "type": "integer", "default": 5 }
+        },
+        "required": ["template", "niches"]
+      }
+    }
   ],
   "keywords": ["youtube", "outlier", "content-research", "faceless", "niche-research"],
   "user_config": {
