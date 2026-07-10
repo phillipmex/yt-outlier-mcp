@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "yt-outlier-mcp",
   "display_name": "YouTube Outlier Finder",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Find YouTube outlier videos: small channels (≤100K subs) with one video massively outperforming their baseline (≥5:1 views:subs) — evidence of a replicable format.",
-  "long_description": "Automates the Icon Method for YouTube content research. find_outliers locates videos on small channels that hugely outperform both the channel's subscriber base and its own median recent uploads — the signature of a format the algorithm rewarded, replicable by a new channel. get_video_structure extracts the copyable format (chapters, tags, transcript); get_comment_signal reads demand resonance from top comments; search_niche_sweep ranks a phrase template across up to 8 niches to find which hobby cluster has a breakout format right now. Bring your own YouTube Data API v3 key (free 10,000 units/day ≈ 75-90 searches).",
+  "long_description": "Automates the Icon Method for YouTube content research. find_outliers locates videos on small channels that hugely outperform both the channel's subscriber base and its own median recent uploads — the signature of a format the algorithm rewarded, replicable by a new channel. get_video_structure extracts the copyable format (chapters, tags, transcript); get_comment_signal reads demand resonance from top comments; search_niche_sweep ranks a phrase template across up to 8 niches to find which hobby cluster has a breakout format right now; get_channel_baseline scores a specific channel's recent uploads against its own median (~3 quota units). Bring your own YouTube Data API v3 key (free 10,000 units/day ≈ 75-90 searches).",
   "author": {
     "name": "phillipmex"
   },
@@ -61,6 +61,19 @@
           "maxComments": { "type": "integer", "default": 30 }
         },
         "required": ["video"]
+      }
+    },
+    {
+      "name": "get_channel_baseline",
+      "description": "Compute a channel's baseline (median recent-upload views) and flag which of its videos are outliers",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "description": "Channel ID (UC…), @handle, or channel URL" },
+          "recentUploads": { "type": "integer", "default": 15 },
+          "minOutlierFactor": { "type": "number", "default": 3 }
+        },
+        "required": ["channel"]
       }
     },
     {

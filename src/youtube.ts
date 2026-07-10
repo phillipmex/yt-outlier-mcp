@@ -146,6 +146,18 @@ export async function getVideoStats(
   return out;
 }
 
+function toChannelStats(it: any): ChannelStats {
+  return {
+    channelId: it.id,
+    title: it.snippet.title,
+    subs: it.statistics.hiddenSubscriberCount
+      ? null
+      : Number(it.statistics.subscriberCount ?? 0),
+    uploadsPlaylistId: it.contentDetails?.relatedPlaylists?.uploads ?? "",
+    videoCount: Number(it.statistics.videoCount ?? 0),
+  };
+}
+
 /** channels.list — 1 unit per call, up to 50 IDs per call. */
 export async function getChannelStats(
   apiKey: string,
@@ -167,18 +179,30 @@ export async function getChannelStats(
     );
     quota.add(1);
     for (const it of data.items ?? []) {
-      out.set(it.id, {
-        channelId: it.id,
-        title: it.snippet.title,
-        subs: it.statistics.hiddenSubscriberCount
-          ? null
-          : Number(it.statistics.subscriberCount ?? 0),
-        uploadsPlaylistId: it.contentDetails?.relatedPlaylists?.uploads ?? "",
-        videoCount: Number(it.statistics.videoCount ?? 0),
-      });
+      out.set(it.id, toChannelStats(it));
     }
   }
   return out;
+}
+
+/** channels.list by @handle (forHandle) or legacy username (forUsername) — 1 unit. */
+export async function getChannelByHandle(
+  apiKey: string,
+  quota: QuotaTracker,
+  handle: string,
+  legacyUsername = false,
+): Promise<ChannelStats | null> {
+  const data = await apiGet(
+    "channels",
+    {
+      part: "snippet,statistics,contentDetails",
+      [legacyUsername ? "forUsername" : "forHandle"]: handle,
+    },
+    apiKey,
+  );
+  quota.add(1);
+  const it = (data.items ?? [])[0];
+  return it ? toChannelStats(it) : null;
 }
 
 /** ISO 8601 duration (PT1H2M3S, P1DT2H) → seconds. */

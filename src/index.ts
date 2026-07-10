@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   QuotaTracker,
   fetchTranscript,
+  getChannelByHandle,
   getChannelStats,
   getRecentUploads,
   getTopComments,
@@ -65,7 +66,7 @@ function queryRelevanceScore(
   return Math.round((matched / terms.length) * 100) / 100;
 }
 
-const server = new McpServer({ name: "yt-outlier-finder", version: "0.4.0" });
+const server = new McpServer({ name: "yt-outlier-finder", version: "0.5.0" });
 
 const MISSING_KEY = {
   isError: true as const,
@@ -85,6 +86,28 @@ function parseVideoId(input: string): string | null {
     /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([\w-]{11})/,
   );
   return m ? m[1] : null;
+}
+
+type ChannelRef =
+  | { kind: "id"; value: string }
+  | { kind: "handle"; value: string }
+  | { kind: "username"; value: string };
+
+/** Accept a channel ID (UC…), @handle, or any common channel URL form. */
+function parseChannelInput(input: string): ChannelRef | null {
+  const trimmed = input.trim();
+  if (/^UC[\w-]{22}$/.test(trimmed)) return { kind: "id", value: trimmed };
+
+  let m = trimmed.match(/youtube\.com\/channel\/(UC[\w-]{22})/);
+  if (m) return { kind: "id", value: m[1] };
+  m = trimmed.match(/youtube\.com\/user\/([\w.-]+)/);
+  if (m) return { kind: "username", value: m[1] };
+  m = trimmed.match(/youtube\.com\/@([\w.-]+)/);
+  if (m) return { kind: "handle", value: m[1] };
+
+  // bare "@handle" or plain "handle" — the API's forHandle tolerates both
+  m = trimmed.match(/^@?([\w.-]+)$/);
+  return m ? { kind: "handle", value: m[1] } : null;
 }
 
 interface Chapter {
@@ -680,6 +703,158 @@ server.registerTool(
                 "niche appearing most often up top is where the replicable " +
                 "format lives. Verify winners with get_video_structure and " +
                 "get_comment_signal.",
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  "get_channel_baseline",
+  {
+    title: "Get a channel's baseline and outliers",
+    description:
+      "Given a specific channel (ID, @handle, or URL), compute its baseline — " +
+      "median views of recent uploads — and score every recent upload against " +
+      "it. Answers: what is normal for this channel, and which of its videos " +
+      "are outliers? Use when you already have a suspect channel instead of a " +
+      "topic query (find_outliers). Cheap: ~3 quota units (no search call).",
+    inputSchema: {
+      channel: z
+        .string()
+        .min(2)
+        .describe(
+          "Channel ID (UC…), @handle, or channel URL (youtube.com/channel/…, youtube.com/@…)",
+        ),
+      recentUploads: z
+        .number()
+        .int()
+        .min(3)
+        .max(50)
+        .default(15)
+        .describe("How many recent uploads to fetch for the baseline"),
+      minOutlierFactor: z
+        .number()
+        .positive()
+        .default(3)
+        .describe(
+          "Flag uploads with views at least this multiple of the channel median as outliers",
+        ),
+    },
+  },
+  async (args) => {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return MISSING_KEY;
+
+    const ref = parseChannelInput(args.channel);
+    if (!ref) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: `Could not parse a channel ID, @handle, or channel URL from "${args.channel}".`,
+          },
+        ],
+      };
+    }
+
+    const quota = new QuotaTracker();
+    let channel;
+    if (ref.kind === "id") {
+      channel = (await getChannelStats(apiKey, quota, [ref.value])).get(ref.value);
+    } else {
+      channel =
+        (await getChannelByHandle(
+          apiKey,
+          quota,
+          ref.value,
+          ref.kind === "username",
+        )) ?? undefined;
+    }
+    if (!channel) {
+      return {
+        isError: true,
+        content: [
+          { type: "text", text: `Channel "${args.channel}" not found.` },
+        ],
+      };
+    }
+    if (!channel.uploadsPlaylistId) {
+      return {
+        isError: true,
+        content: [
+          { type: "text", text: `Channel "${channel.title}" has no uploads playlist (no public videos).` },
+        ],
+      };
+    }
+
+    const uploadIds = await getRecentUploads(
+      apiKey,
+      quota,
+      channel.uploadsPlaylistId,
+      args.recentUploads,
+    );
+    const stats = await getVideoStats(apiKey, quota, uploadIds);
+
+    const sortedViews = [...stats.values()].map((v) => v.views).sort((a, b) => a - b);
+    const medianViews =
+      sortedViews.length > 0
+        ? sortedViews[Math.floor(sortedViews.length / 2)]
+        : null;
+
+    const uploads = uploadIds
+      .map((id) => stats.get(id))
+      .filter((v): v is NonNullable<typeof v> => v !== undefined)
+      .map((v) => {
+        const factor =
+          medianViews !== null && medianViews > 0
+            ? Math.round((v.views / medianViews) * 10) / 10
+            : null;
+        return {
+          videoId: v.videoId,
+          url: `https://www.youtube.com/watch?v=${v.videoId}`,
+          title: v.title,
+          publishedAt: v.publishedAt,
+          views: v.views,
+          viewsToSubsRatio:
+            channel.subs !== null
+              ? Math.round((v.views / Math.max(channel.subs, 1)) * 10) / 10
+              : null,
+          outlierFactor: factor,
+          isOutlier: factor !== null && factor >= args.minOutlierFactor,
+        };
+      })
+      .sort((a, b) => b.views - a.views);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              channel: {
+                channelId: channel.channelId,
+                url: `https://www.youtube.com/channel/${channel.channelId}`,
+                title: channel.title,
+                subs: channel.subs,
+                totalVideoCount: channel.videoCount,
+              },
+              uploadsAnalyzed: uploads.length,
+              medianRecentViews: medianViews,
+              outlierCount: uploads.filter((u) => u.isOutlier).length,
+              uploads,
+              note:
+                "outlierFactor is views vs. the median of these recent uploads " +
+                "(the video's own views are included in the median, so factors " +
+                "are slightly conservative). subs=null means the channel hides " +
+                "its subscriber count. Verify outliers with get_video_structure " +
+                "and get_comment_signal.",
+              quotaUnitsUsed: quota.units,
             },
             null,
             2,

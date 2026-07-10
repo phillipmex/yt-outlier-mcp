@@ -1,6 +1,6 @@
 {
   "name": "yt-outlier-mcp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "MCP server that finds YouTube outlier videos: small channels (≤100K subs) with one video massively outperforming their baseline (≥5:1 views-to-subs).",
   "type": "module",
   "bin": {

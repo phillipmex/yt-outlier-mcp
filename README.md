@@ -81,6 +81,20 @@ quota-exhausted error aborts the remaining niches with a note.
 | `maxResultsPerNiche` | 5 | Cap per niche |
 | filters | same as `find_outliers` | `maxSubs`, `minViews`, `minRatio`, `publishedWithinDays`, `minOutlierFactor`, `minQueryRelevance` |
 
+## Tool: `get_channel_baseline`
+
+The inverse entry point: you already have a suspect channel (from a
+competitor, a comment, another tool) instead of a topic query. Computes the
+channel's baseline — median views of its recent uploads — and scores every
+recent upload against it, flagging outliers. **Cheap: ~3 quota units** (no
+`search.list` call). Accepts channel ID, `@handle`, or channel URL.
+
+| Input | Default | Meaning |
+|---|---|---|
+| `channel` | (required) | Channel ID (`UC…`), `@handle`, or channel URL |
+| `recentUploads` | 15 | Recent uploads to fetch for the baseline (3–50) |
+| `minOutlierFactor` | 3 | Flag uploads at ≥ this multiple of the channel median |
+
 ## Setup
 
 ```sh
