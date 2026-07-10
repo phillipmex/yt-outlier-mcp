@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>yt-outlier-mcp — Project Tracker</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 32px auto; padding: 0 20px; max-width: 1200px; background: #1a1a1a; color: #e8e8e8; }
+    h1 { font-size: 1.4rem; margin-bottom: 4px; }
+    .subtitle { color: #888; font-size: 0.88rem; margin-bottom: 24px; }
+    .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .plan { background: #252525; border: 1px solid #3a3a3a; border-radius: 10px; padding: 20px; }
+    h2 { font-size: 1rem; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 2px solid #3a3a3a; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 6px; margin-bottom: 4px; border: 1px solid #333; background: #2a2a2a; }
+    li.done { background: #1a2f1a; border-color: #2a5a2a; color: #aaa; }
+    li.done .label { text-decoration: line-through; }
+    li.blocked { background: #2f2010; border-color: #6a4a10; }
+    li.next { background: #101830; border-color: #2040a0; }
+    .icon { flex-shrink: 0; margin-top: 2px; }
+    .label { flex: 1; font-size: 0.88rem; line-height: 1.4; }
+    .tag { font-size: 0.72rem; background: #3a3a3a; border-radius: 4px; padding: 1px 6px; color: #bbb; white-space: nowrap; align-self: center; }
+    li.done .tag { background: #1a4a1a; color: #5aaa5a; }
+    li.blocked .tag { background: #4a3000; color: #ddaa40; }
+    li.next .tag { background: #101840; color: #6090e0; }
+    .cmd { font-family: monospace; font-size: 0.78rem; color: #ccc; background: #333; border-radius: 3px; padding: 1px 4px; word-break: break-all; }
+    .open-q { margin-top: 24px; background: #252525; border: 1px solid #3a3a3a; border-radius: 10px; padding: 20px; }
+    .divider { border: none; border-top: 1px dashed #444; margin: 8px 0; }
+    .updated { color: #555; font-size: 0.75rem; margin-top: 24px; text-align: right; }
+  </style>
+</head>
+<body>
+
+<h1>yt-outlier-mcp &mdash; Project Tracker</h1>
+<p class="subtitle">MCP server for finding YouTube outlier videos (Icon Method): outlier search, niche sweep, video structure, comment signal. Public repo, MIT, listed on Smithery.</p>
+
+<div class="plans">
+  <div class="plan">
+    <h2>MCP server v0.3.0</h2>
+    <ul>
+      <li class="done"><span class="icon">&#10003;</span><span class="label">4 tools shipped: outlier search, <span class="cmd">search_niche_sweep</span> (<span class="cmd">57a78b3</span>), <span class="cmd">get_video_structure</span> + <span class="cmd">get_comment_signal</span> (<span class="cmd">11dbdaa</span>)</span><span class="tag">done</span></li>
+      <li class="done"><span class="icon">&#10003;</span><span class="label"><span class="cmd">inputSchema</span> added to manifest tools; Smithery listing live (<span class="cmd">7292643</span>)</span><span class="tag">done</span></li>
+      <li class="done"><span class="icon">&#10003;</span><span class="label">MCPB bundle packed; <span class="cmd">manifest.json</span> added, build artifacts gitignored (<span class="cmd">7e4ea68</span>)</span><span class="tag">done</span></li>
+      <li class="done"><span class="icon">&#10003;</span><span class="label">Repo public with MIT LICENSE (<span class="cmd">d8da8ec</span>) at <span class="cmd">github.com/phillipmex/yt-outlier-mcp</span></span><span class="tag">done</span></li>
+    </ul>
+  </div>
+
+  <div class="plan">
+    <h2>Distribution</h2>
+    <ul>
+      <li class="blocked"><span class="icon">&#9888;</span><span class="label">MCPize listing &mdash; deferred by user decision; revisit if Smithery traction warrants it</span><span class="tag">deferred</span></li>
+    </ul>
+  </div>
+</div>
+
+<div class="open-q">
+  <h2>Open Questions / Notes</h2>
+  <ul>
+    <li><span class="icon">&#8226;</span><span class="label">Clean working tree on <span class="cmd">main</span>, in sync with origin. No active next item &mdash; project is shipped; watch Smithery for usage/issues.</span></li>
+  </ul>
+</div>
+
+<p class="updated">Last updated: 2026-07-10</p>
+
+</body>
+</html>
