@@ -1,0 +1,44 @@
+{
+  "manifest_version": "0.2",
+  "name": "yt-outlier-mcp",
+  "display_name": "YouTube Outlier Finder",
+  "version": "0.3.0",
+  "description": "Find YouTube outlier videos: small channels (≤100K subs) with one video massively outperforming their baseline (≥5:1 views:subs) — evidence of a replicable format.",
+  "long_description": "Automates the Icon Method for YouTube content research. find_outliers locates videos on small channels that hugely outperform both the channel's subscriber base and its own median recent uploads — the signature of a format the algorithm rewarded, replicable by a new channel. get_video_structure extracts the copyable format (chapters, tags, transcript); get_comment_signal reads demand resonance from top comments; search_niche_sweep ranks a phrase template across up to 8 niches to find which hobby cluster has a breakout format right now. Bring your own YouTube Data API v3 key (free 10,000 units/day ≈ 75-90 searches).",
+  "author": {
+    "name": "phillipmex"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "YOUTUBE_API_KEY": "${user_config.youtube_api_key}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "find_outliers", "description": "Search a topic phrase for videos on small channels that hugely outperform the channel's subs and its own recent uploads" },
+    { "name": "get_video_structure", "description": "Extract a video's replicable format: duration, chapters, tags, description, transcript" },
+    { "name": "get_comment_signal", "description": "Top relevance-ordered comments plus question/demand-phrase counts (unmet-demand signal)" },
+    { "name": "search_niche_sweep", "description": "Run the outlier search across up to 8 niches from one phrase template and rank hits across all of them" }
+  ],
+  "keywords": ["youtube", "outlier", "content-research", "faceless", "niche-research"],
+  "user_config": {
+    "youtube_api_key": {
+      "type": "string",
+      "title": "YouTube Data API v3 key",
+      "description": "Your own Google Cloud API key restricted to YouTube Data API v3. Free quota is 10,000 units/day; one outlier search costs ~110-130 units.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18"
+    }
+  }
+}
