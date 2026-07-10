@@ -34,7 +34,7 @@ interface OutlierResult {
   channelVideoCount: number;
 }
 
-const server = new McpServer({ name: "yt-outlier-finder", version: "0.2.0" });
+const server = new McpServer({ name: "yt-outlier-finder", version: "0.3.0" });
 
 const MISSING_KEY = {
   isError: true as const,
@@ -77,6 +77,107 @@ function parseChapters(description: string): Chapter[] {
   // Real chapter lists start at 0:00 and have several entries; a lone
   // timestamp in a description is usually just prose.
   return chapters.length >= 2 && chapters[0].seconds === 0 ? chapters : [];
+}
+
+interface OutlierSearchOpts {
+  query: string;
+  maxSubs: number;
+  minViews: number;
+  minRatio: number;
+  publishedWithinDays: number;
+  minOutlierFactor: number;
+  maxResults: number;
+}
+
+// Shared engine behind find_outliers and search_niche_sweep.
+async function runOutlierSearch(
+  apiKey: string,
+  quota: QuotaTracker,
+  opts: OutlierSearchOpts,
+): Promise<OutlierResult[]> {
+  const publishedAfter = new Date(
+    Date.now() - opts.publishedWithinDays * 86_400_000,
+  ).toISOString();
+
+  // 1. Search (the expensive call: 100 units)
+  const videoIds = await searchVideos(
+    apiKey,
+    quota,
+    opts.query,
+    publishedAfter,
+    50,
+  );
+  if (videoIds.length === 0) return [];
+
+  // 2. Hydrate video + channel stats, apply the cheap filters
+  const videos = await getVideoStats(apiKey, quota, videoIds);
+  const channels = await getChannelStats(apiKey, quota, [
+    ...new Set([...videos.values()].map((v) => v.channelId)),
+  ]);
+
+  const candidates = [...videos.values()]
+    .map((v) => ({ video: v, channel: channels.get(v.channelId) }))
+    .filter(
+      (c): c is { video: (typeof c)["video"]; channel: NonNullable<(typeof c)["channel"]> } =>
+        c.channel !== undefined &&
+        c.channel.subs !== null && // hidden sub counts can't prove the ratio
+        c.channel.subs <= opts.maxSubs &&
+        c.video.views >= opts.minViews &&
+        c.video.views / Math.max(c.channel.subs, 1) >= opts.minRatio,
+    )
+    .sort(
+      (a, b) =>
+        b.video.views / Math.max(b.channel.subs!, 1) -
+        a.video.views / Math.max(a.channel.subs!, 1),
+    )
+    // Baseline checks cost ~2 units each — cap how many we verify
+    .slice(0, opts.maxResults * 2);
+
+  // 3. Outlier-vs-baseline check: compare against median of the channel's
+  //    other recent uploads (a big video on a channel whose EVERY video is
+  //    big proves nothing about the format).
+  const outliers: OutlierResult[] = [];
+  for (const { video, channel } of candidates) {
+    if (outliers.length >= opts.maxResults) break;
+
+    let medianViews: number | null = null;
+    let factor: number | null = null;
+    if (channel.uploadsPlaylistId) {
+      const uploadIds = (
+        await getRecentUploads(apiKey, quota, channel.uploadsPlaylistId, 15)
+      ).filter((id) => id !== video.videoId);
+      if (uploadIds.length >= 3) {
+        const uploadStats = await getVideoStats(apiKey, quota, uploadIds);
+        const views = [...uploadStats.values()]
+          .map((v) => v.views)
+          .sort((a, b) => a - b);
+        medianViews = views[Math.floor(views.length / 2)];
+        factor =
+          medianViews > 0 ? video.views / medianViews : Number.POSITIVE_INFINITY;
+        if (factor < opts.minOutlierFactor) continue;
+      }
+      // <3 other uploads: channel is basically this one video — that IS the
+      // outlier signature (idea6's azcheckers case), so keep it unverified.
+    }
+
+    outliers.push({
+      videoId: video.videoId,
+      url: `https://www.youtube.com/watch?v=${video.videoId}`,
+      title: video.title,
+      channelTitle: channel.title,
+      channelUrl: `https://www.youtube.com/channel/${channel.channelId}`,
+      publishedAt: video.publishedAt,
+      views: video.views,
+      subs: channel.subs!,
+      viewsToSubsRatio:
+        Math.round((video.views / Math.max(channel.subs!, 1)) * 10) / 10,
+      channelMedianViews: medianViews,
+      outlierFactor: factor === null ? null : Math.round(factor * 10) / 10,
+      commentsEnabled: video.comments !== null,
+      channelVideoCount: channel.videoCount,
+    });
+  }
+  return outliers;
 }
 
 server.registerTool(
@@ -142,102 +243,7 @@ server.registerTool(
     if (!apiKey) return MISSING_KEY;
 
     const quota = new QuotaTracker();
-    const publishedAfter = new Date(
-      Date.now() - args.publishedWithinDays * 86_400_000,
-    ).toISOString();
-
-    // 1. Search (the expensive call: 100 units)
-    const videoIds = await searchVideos(
-      apiKey,
-      quota,
-      args.query,
-      publishedAfter,
-      50,
-    );
-    if (videoIds.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              { query: args.query, outliers: [], quotaUnitsUsed: quota.units },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-
-    // 2. Hydrate video + channel stats, apply the cheap filters
-    const videos = await getVideoStats(apiKey, quota, videoIds);
-    const channels = await getChannelStats(apiKey, quota, [
-      ...new Set([...videos.values()].map((v) => v.channelId)),
-    ]);
-
-    const candidates = [...videos.values()]
-      .map((v) => ({ video: v, channel: channels.get(v.channelId) }))
-      .filter(
-        (c): c is { video: (typeof c)["video"]; channel: NonNullable<(typeof c)["channel"]> } =>
-          c.channel !== undefined &&
-          c.channel.subs !== null && // hidden sub counts can't prove the ratio
-          c.channel.subs <= args.maxSubs &&
-          c.video.views >= args.minViews &&
-          c.video.views / Math.max(c.channel.subs, 1) >= args.minRatio,
-      )
-      .sort(
-        (a, b) =>
-          b.video.views / Math.max(b.channel.subs!, 1) -
-          a.video.views / Math.max(a.channel.subs!, 1),
-      )
-      // Baseline checks cost ~2 units each — cap how many we verify
-      .slice(0, args.maxResults * 2);
-
-    // 3. Outlier-vs-baseline check: compare against median of the channel's
-    //    other recent uploads (a big video on a channel whose EVERY video is
-    //    big proves nothing about the format).
-    const outliers: OutlierResult[] = [];
-    for (const { video, channel } of candidates) {
-      if (outliers.length >= args.maxResults) break;
-
-      let medianViews: number | null = null;
-      let factor: number | null = null;
-      if (channel.uploadsPlaylistId) {
-        const uploadIds = (
-          await getRecentUploads(apiKey, quota, channel.uploadsPlaylistId, 15)
-        ).filter((id) => id !== video.videoId);
-        if (uploadIds.length >= 3) {
-          const uploadStats = await getVideoStats(apiKey, quota, uploadIds);
-          const views = [...uploadStats.values()]
-            .map((v) => v.views)
-            .sort((a, b) => a - b);
-          medianViews = views[Math.floor(views.length / 2)];
-          factor =
-            medianViews > 0 ? video.views / medianViews : Number.POSITIVE_INFINITY;
-          if (factor < args.minOutlierFactor) continue;
-        }
-        // <3 other uploads: channel is basically this one video — that IS the
-        // outlier signature (idea6's azcheckers case), so keep it unverified.
-      }
-
-      outliers.push({
-        videoId: video.videoId,
-        url: `https://www.youtube.com/watch?v=${video.videoId}`,
-        title: video.title,
-        channelTitle: channel.title,
-        channelUrl: `https://www.youtube.com/channel/${channel.channelId}`,
-        publishedAt: video.publishedAt,
-        views: video.views,
-        subs: channel.subs!,
-        viewsToSubsRatio:
-          Math.round((video.views / Math.max(channel.subs!, 1)) * 10) / 10,
-        channelMedianViews: medianViews,
-        outlierFactor:
-          factor === null ? null : Math.round(factor * 10) / 10,
-        commentsEnabled: video.comments !== null,
-        channelVideoCount: channel.videoCount,
-      });
-    }
+    const outliers = await runOutlierSearch(apiKey, quota, args);
 
     return {
       content: [
@@ -465,6 +471,153 @@ server.registerTool(
                 "demand resonance: unanswered questions, requests for " +
                 "follow-ups, and 'I was looking for exactly this' energy.",
               quotaUnitsUsed: quota.units,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  "search_niche_sweep",
+  {
+    title: "Sweep a phrase template across niches",
+    description:
+      "Run the outlier search once per niche by substituting each niche into " +
+      'a phrase template (e.g. "beginner mistakes {niche}" across ' +
+      "['sourdough', 'bonsai', 'leathercraft']) and rank the hits across all " +
+      "niches. Answers: which hobby cluster has a replicable breakout format " +
+      "right now? EXPENSIVE: each niche costs a full search (~110-130 quota " +
+      "units), so an 8-niche sweep uses ~10% of the 10,000-unit daily free " +
+      "quota.",
+    inputSchema: {
+      template: z
+        .string()
+        .min(4)
+        .refine((s) => s.includes("{niche}"), {
+          message: 'template must contain the "{niche}" placeholder',
+        })
+        .describe(
+          'Search phrase template containing "{niche}", e.g. "beginner mistakes {niche}"',
+        ),
+      niches: z
+        .array(z.string().min(2))
+        .min(1)
+        .max(8)
+        .describe(
+          "Niches to substitute into the template (max 8 per sweep to cap quota)",
+        ),
+      maxSubs: z
+        .number()
+        .int()
+        .positive()
+        .default(100_000)
+        .describe("Maximum channel subscriber count"),
+      minViews: z
+        .number()
+        .int()
+        .positive()
+        .default(100_000)
+        .describe("Minimum video view count"),
+      minRatio: z
+        .number()
+        .positive()
+        .default(5)
+        .describe("Minimum views-to-subscribers ratio"),
+      publishedWithinDays: z
+        .number()
+        .int()
+        .positive()
+        .default(365)
+        .describe("Only consider videos uploaded within this many days"),
+      minOutlierFactor: z
+        .number()
+        .positive()
+        .default(3)
+        .describe(
+          "Video views must be at least this multiple of the channel's median recent-upload views",
+        ),
+      maxResultsPerNiche: z
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .default(5)
+        .describe("Maximum outliers to return per niche"),
+    },
+  },
+  async (args) => {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return MISSING_KEY;
+
+    const quota = new QuotaTracker();
+    const perNiche: {
+      niche: string;
+      query: string;
+      outliers?: OutlierResult[];
+      error?: string;
+    }[] = [];
+    let sweepAborted: string | null = null;
+
+    for (const niche of args.niches) {
+      const query = args.template.replaceAll("{niche}", niche);
+      try {
+        const outliers = await runOutlierSearch(apiKey, quota, {
+          query,
+          maxSubs: args.maxSubs,
+          minViews: args.minViews,
+          minRatio: args.minRatio,
+          publishedWithinDays: args.publishedWithinDays,
+          minOutlierFactor: args.minOutlierFactor,
+          maxResults: args.maxResultsPerNiche,
+        });
+        perNiche.push({ niche, query, outliers });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        perNiche.push({ niche, query, error: msg });
+        // Out of quota means every remaining search would also fail — stop
+        if (/quotaExceeded|dailyLimitExceeded/.test(msg)) {
+          sweepAborted =
+            "Daily YouTube API quota exhausted mid-sweep; remaining niches were skipped.";
+          break;
+        }
+      }
+    }
+
+    // Cross-niche ranking: the whole point of a sweep is comparing clusters
+    const topAcrossNiches = perNiche
+      .flatMap((n) => (n.outliers ?? []).map((o) => ({ niche: n.niche, ...o })))
+      .sort((a, b) => b.viewsToSubsRatio - a.viewsToSubsRatio)
+      .slice(0, 10);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              template: args.template,
+              criteria: {
+                maxSubs: args.maxSubs,
+                minViews: args.minViews,
+                minRatio: args.minRatio,
+                publishedWithinDays: args.publishedWithinDays,
+                minOutlierFactor: args.minOutlierFactor,
+              },
+              nichesSwept: perNiche.length,
+              nichesRequested: args.niches.length,
+              topAcrossNiches,
+              perNiche,
+              quotaUnitsUsed: quota.units,
+              note:
+                (sweepAborted ? `${sweepAborted} ` : "") +
+                "topAcrossNiches ranks all hits by views:subs ratio — the " +
+                "niche appearing most often up top is where the replicable " +
+                "format lives. Verify winners with get_video_structure and " +
+                "get_comment_signal.",
             },
             null,
             2,

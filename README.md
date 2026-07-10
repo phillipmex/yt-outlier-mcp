@@ -61,6 +61,22 @@ comments-disabled videos gracefully. Costs **1 quota unit**.
 | `video` | (required) | Video ID or URL |
 | `maxComments` | 30 | Top comments to fetch (max 100) |
 
+## Tool: `search_niche_sweep`
+
+Runs `find_outliers` once per niche by substituting each niche into a phrase
+template, then ranks every hit across all niches by views:subs ratio — the
+niche that keeps appearing up top is where the replicable format lives.
+**Expensive**: each niche is a full search (~110–130 units), max 8 niches per
+sweep. Per-niche API errors are recorded without killing the sweep; a
+quota-exhausted error aborts the remaining niches with a note.
+
+| Input | Default | Meaning |
+|---|---|---|
+| `template` | (required) | Phrase containing `{niche}`, e.g. `"beginner mistakes {niche}"` |
+| `niches` | (required) | 1–8 niches to substitute |
+| `maxResultsPerNiche` | 5 | Cap per niche |
+| filters | same as `find_outliers` | `maxSubs`, `minViews`, `minRatio`, `publishedWithinDays`, `minOutlierFactor` |
+
 ## Setup
 
 ```sh
@@ -86,5 +102,6 @@ makes this sellable without a Google quota-extension audit.
 - [x] Phase 2 tools: `get_video_structure` (chapters/transcript) and
       `get_comment_signal` (top comments → demand resonance) to automate
       Icon Method verification steps 2–3 (2026-07-10, live-tested)
-- [ ] `search_niche_sweep`: rotate one phrase template across hobby clusters
+- [x] `search_niche_sweep`: rotate one phrase template across hobby clusters
+      (2026-07-10, live-tested: 2-niche sweep = 210 units, cross-niche ranking works)
 - [ ] List on Smithery (free discovery) + MCPize (hosting/billing, 85% rev share)
