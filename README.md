@@ -32,6 +32,35 @@ Output per outlier: URL, views, subs, ratio, channel median views,
 outlier factor, comments-enabled flag (comments are the manual demand-signal
 step), channel video count, plus total quota units consumed.
 
+## Tool: `get_video_structure`
+
+Icon Method verification step 2 — extract the replicable format instead of
+guessing it. Takes a video ID or URL; returns duration, tags, chapters
+(parsed from `0:00 Intro`-style description lines), the description, and the
+transcript. Costs **1 quota unit**; the transcript itself is fetched outside
+the Data API at zero quota (`captions.download` needs owner OAuth, so the
+server asks the InnerTube player endpoint as the ANDROID client — unofficial,
+returns `transcript: null` gracefully if YouTube ever gates it).
+
+| Input | Default | Meaning |
+|---|---|---|
+| `video` | (required) | Video ID or URL (watch/shorts/youtu.be forms) |
+| `includeTranscript` | true | Fetch the transcript |
+| `maxTranscriptChars` | 15,000 | Truncation cap |
+
+## Tool: `get_comment_signal`
+
+Icon Method verification step 3 — comments prove unmet demand, not just
+views. Returns the top relevance-ordered comments (author, text, likes,
+replies) plus quick counts: comments asking questions and comments using
+demand phrasing ("please make…", "part 2", "how do you…"). Handles
+comments-disabled videos gracefully. Costs **1 quota unit**.
+
+| Input | Default | Meaning |
+|---|---|---|
+| `video` | (required) | Video ID or URL |
+| `maxComments` | 30 | Top comments to fetch (max 100) |
+
 ## Setup
 
 ```sh
@@ -52,9 +81,10 @@ makes this sellable without a Google quota-extension audit.
 
 ## Roadmap
 
-- [ ] Live-test tool against real niches (needs API key)
-- [ ] Phase 2 tools: `get_video_structure` (chapters/transcript) and
+- [x] Live-test tool against real niches (2026-07-10: 4 real outliers on
+      "beginner mistakes sourdough", 110 units/call as predicted)
+- [x] Phase 2 tools: `get_video_structure` (chapters/transcript) and
       `get_comment_signal` (top comments → demand resonance) to automate
-      Icon Method verification steps 2–3
+      Icon Method verification steps 2–3 (2026-07-10, live-tested)
 - [ ] `search_niche_sweep`: rotate one phrase template across hobby clusters
 - [ ] List on Smithery (free discovery) + MCPize (hosting/billing, 85% rev share)

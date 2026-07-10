@@ -9,8 +9,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   QuotaTracker,
+  fetchTranscript,
   getChannelStats,
   getRecentUploads,
+  getTopComments,
+  getVideoDetails,
   getVideoStats,
   searchVideos,
 } from "./youtube.js";
@@ -31,7 +34,50 @@ interface OutlierResult {
   channelVideoCount: number;
 }
 
-const server = new McpServer({ name: "yt-outlier-finder", version: "0.1.0" });
+const server = new McpServer({ name: "yt-outlier-finder", version: "0.2.0" });
+
+const MISSING_KEY = {
+  isError: true as const,
+  content: [
+    {
+      type: "text" as const,
+      text: "YOUTUBE_API_KEY is not set. Provide a YouTube Data API v3 key via environment variable (see .env.example).",
+    },
+  ],
+};
+
+/** Accept a bare 11-char video ID or any common YouTube URL form. */
+function parseVideoId(input: string): string | null {
+  const trimmed = input.trim();
+  if (/^[\w-]{11}$/.test(trimmed)) return trimmed;
+  const m = trimmed.match(
+    /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([\w-]{11})/,
+  );
+  return m ? m[1] : null;
+}
+
+interface Chapter {
+  timestamp: string;
+  seconds: number;
+  title: string;
+}
+
+/** Parse "0:00 Intro"-style chapter lines out of a video description. */
+function parseChapters(description: string): Chapter[] {
+  const chapters: Chapter[] = [];
+  for (const line of description.split("\n")) {
+    const m = line.match(
+      /^\s*[-•*]?\s*\(?((?:\d{1,2}:)?\d{1,2}:\d{2})\)?\s*[-–—:.]?\s*(\S.*)$/,
+    );
+    if (!m) continue;
+    const parts = m[1].split(":").map(Number);
+    const seconds = parts.reduce((acc, p) => acc * 60 + p, 0);
+    chapters.push({ timestamp: m[1], seconds, title: m[2].trim() });
+  }
+  // Real chapter lists start at 0:00 and have several entries; a lone
+  // timestamp in a description is usually just prose.
+  return chapters.length >= 2 && chapters[0].seconds === 0 ? chapters : [];
+}
 
 server.registerTool(
   "find_outliers",
@@ -93,17 +139,7 @@ server.registerTool(
   },
   async (args) => {
     const apiKey = process.env.YOUTUBE_API_KEY;
-    if (!apiKey) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: "YOUTUBE_API_KEY is not set. Provide a YouTube Data API v3 key via environment variable (see .env.example).",
-          },
-        ],
-      };
-    }
+    if (!apiKey) return MISSING_KEY;
 
     const quota = new QuotaTracker();
     const publishedAfter = new Date(
@@ -222,9 +258,213 @@ server.registerTool(
               note:
                 "outlierFactor=null means the channel had <3 other uploads to " +
                 "compare against (one-video channel — strong outlier signature " +
-                "but verify manually). Next manual steps per Icon Method: read " +
-                "top comments for demand signal, extract structure from " +
-                "chapters/transcript.",
+                "but verify manually). Next steps per Icon Method: call " +
+                "get_comment_signal for demand resonance and " +
+                "get_video_structure for the replicable format.",
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+server.registerTool(
+  "get_video_structure",
+  {
+    title: "Get a video's replicable structure",
+    description:
+      "Fetch what makes an outlier video's format copyable: duration, " +
+      "chapters (parsed from the description), tags, and the transcript. " +
+      "Icon Method verification step: extract the structure, don't guess it. " +
+      "Costs 1 YouTube API quota unit (transcript is fetched outside the API " +
+      "at zero quota and may be unavailable for some videos).",
+    inputSchema: {
+      video: z
+        .string()
+        .min(4)
+        .describe("YouTube video ID or URL (watch/shorts/youtu.be forms)"),
+      includeTranscript: z
+        .boolean()
+        .default(true)
+        .describe("Fetch the transcript (slower; adds no quota cost)"),
+      maxTranscriptChars: z
+        .number()
+        .int()
+        .positive()
+        .default(15_000)
+        .describe("Truncate the transcript to this many characters"),
+    },
+  },
+  async (args) => {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return MISSING_KEY;
+
+    const videoId = parseVideoId(args.video);
+    if (!videoId) {
+      return {
+        isError: true,
+        content: [
+          { type: "text", text: `Could not parse a video ID from "${args.video}".` },
+        ],
+      };
+    }
+
+    const quota = new QuotaTracker();
+    const details = await getVideoDetails(apiKey, quota, videoId);
+    if (!details) {
+      return {
+        isError: true,
+        content: [
+          { type: "text", text: `Video ${videoId} not found (deleted or private).` },
+        ],
+      };
+    }
+
+    const transcript = args.includeTranscript
+      ? await fetchTranscript(videoId)
+      : null;
+    const truncated =
+      transcript !== null && transcript.text.length > args.maxTranscriptChars;
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              videoId,
+              url: `https://www.youtube.com/watch?v=${videoId}`,
+              title: details.title,
+              channelTitle: details.channelTitle,
+              publishedAt: details.publishedAt,
+              durationSeconds: details.durationSeconds,
+              views: details.views,
+              tags: details.tags,
+              chapters: parseChapters(details.description),
+              description: details.description.slice(0, 2_000),
+              transcript:
+                transcript === null
+                  ? null
+                  : {
+                      source: transcript.source,
+                      language: transcript.language,
+                      truncated,
+                      text: transcript.text.slice(0, args.maxTranscriptChars),
+                    },
+              transcriptNote:
+                transcript === null
+                  ? args.includeTranscript
+                    ? "No transcript available (no captions, or YouTube blocked the unofficial fetch). Structure analysis must rely on chapters/description."
+                    : "Transcript skipped (includeTranscript=false)."
+                  : undefined,
+              quotaUnitsUsed: quota.units,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+// Phrases that signal audience demand rather than mere appreciation
+const DEMAND_RE =
+  /\b(please|pls|more videos?|part (2|two)|next video|tutorial|i wish|wish (you|there)|how (do|did) you|can you (do|make|show)|what about|where (can|do) (i|you))\b/i;
+
+server.registerTool(
+  "get_comment_signal",
+  {
+    title: "Read a video's comment demand signal",
+    description:
+      "Fetch a video's top comments (relevance-ordered) plus simple demand " +
+      "metrics: how many ask questions and how many use demand phrasing " +
+      "('please make...', 'part 2', 'how do you...'). Icon Method " +
+      "verification step: comments prove the topic has unmet demand, not " +
+      "just views. Costs 1 YouTube API quota unit.",
+    inputSchema: {
+      video: z
+        .string()
+        .min(4)
+        .describe("YouTube video ID or URL (watch/shorts/youtu.be forms)"),
+      maxComments: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .default(30)
+        .describe("Number of top comments to fetch"),
+    },
+  },
+  async (args) => {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return MISSING_KEY;
+
+    const videoId = parseVideoId(args.video);
+    if (!videoId) {
+      return {
+        isError: true,
+        content: [
+          { type: "text", text: `Could not parse a video ID from "${args.video}".` },
+        ],
+      };
+    }
+
+    const quota = new QuotaTracker();
+    const comments = await getTopComments(apiKey, quota, videoId, args.maxComments);
+
+    if (comments === null) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                videoId,
+                url: `https://www.youtube.com/watch?v=${videoId}`,
+                commentsEnabled: false,
+                note: "Comments are disabled on this video — no demand signal readable. Per Icon Method that weakens the outlier (comments are the demand-verification step).",
+                quotaUnitsUsed: quota.units,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    }
+
+    const trimmed = comments.map((c) => ({
+      ...c,
+      text: c.text.length > 500 ? `${c.text.slice(0, 500)}…` : c.text,
+    }));
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              videoId,
+              url: `https://www.youtube.com/watch?v=${videoId}`,
+              commentsEnabled: true,
+              fetched: trimmed.length,
+              signals: {
+                questionComments: comments.filter((c) => c.text.includes("?"))
+                  .length,
+                demandComments: comments.filter((c) => DEMAND_RE.test(c.text))
+                  .length,
+                totalLikesOnTop: comments.reduce((sum, c) => sum + c.likes, 0),
+              },
+              comments: trimmed,
+              note:
+                "Comments are relevance-ordered (YouTube's ranking). Read for " +
+                "demand resonance: unanswered questions, requests for " +
+                "follow-ups, and 'I was looking for exactly this' energy.",
+              quotaUnitsUsed: quota.units,
             },
             null,
             2,
