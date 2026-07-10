@@ -1,0 +1,33 @@
+{
+  "name": "yt-outlier-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that finds YouTube outlier videos: small channels (≤100K subs) with one video massively outperforming their baseline (≥5:1 views-to-subs).",
+  "type": "module",
+  "bin": {
+    "yt-outlier-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "youtube",
+    "outlier",
+    "faceless",
+    "content-research"
+  ],
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
