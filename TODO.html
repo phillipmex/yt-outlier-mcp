@@ -5,30 +5,84 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>yt-outlier-mcp — Project Tracker</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; margin: 32px auto; padding: 0 20px; max-width: 1200px; background: #1a1a1a; color: #e8e8e8; }
-    h1 { font-size: 1.4rem; margin-bottom: 4px; }
-    .subtitle { color: #888; font-size: 0.88rem; margin-bottom: 24px; }
-    .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-    .plan { background: #252525; border: 1px solid #3a3a3a; border-radius: 10px; padding: 20px; }
-    h2 { font-size: 1rem; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 2px solid #3a3a3a; }
-    ul { list-style: none; padding: 0; margin: 0; }
-    li { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 6px; margin-bottom: 4px; border: 1px solid #333; background: #2a2a2a; }
-    li.done { background: #1a2f1a; border-color: #2a5a2a; color: #aaa; }
-    li.done .label { text-decoration: line-through; }
-    li.blocked { background: #2f2010; border-color: #6a4a10; }
-    li.next { background: #101830; border-color: #2040a0; }
-    .icon { flex-shrink: 0; margin-top: 2px; }
-    .label { flex: 1; font-size: 0.88rem; line-height: 1.4; }
-    .tag { font-size: 0.72rem; background: #3a3a3a; border-radius: 4px; padding: 1px 6px; color: #bbb; white-space: nowrap; align-self: center; }
-    li.done .tag { background: #1a4a1a; color: #5aaa5a; }
-    li.blocked .tag { background: #4a3000; color: #ddaa40; }
-    li.next .tag { background: #101840; color: #6090e0; }
-    .cmd { font-family: monospace; font-size: 0.78rem; color: #ccc; background: #333; border-radius: 3px; padding: 1px 4px; word-break: break-all; }
-    .open-q { margin-top: 24px; background: #252525; border: 1px solid #3a3a3a; border-radius: 10px; padding: 20px; }
-    .divider { border: none; border-top: 1px dashed #444; margin: 8px 0; }
-    .updated { color: #555; font-size: 0.75rem; margin-top: 24px; text-align: right; }
-  </style>
+  /* ===== unified TODO skin — canonical light/dark token palette, styles both
+     the compact-list (Group A) and kanban-panel (Group B) structures ===== */
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1a2233; --muted: #5b6575;
+    --line: #e3e7ee; --accent: #2563eb; --good: #16a34a; --warn: #d97706;
+    --done-ink: #8a93a3; --chip-bg: #eef2f8; --code: #334155;
+    --next-bg: #eef3ff; --next-line: #9dbcf5;
+    --blocked-bg: #fff4e5; --blocked-line: #f0c37a;
+    --done-bg: #eefaf0; --done-line: #a5e0b5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --card: #1a1f2a; --ink: #e7ebf2; --muted: #9aa4b5;
+      --line: #2a3140; --accent: #60a5fa; --good: #4ade80; --warn: #fbbf24;
+      --done-ink: #6b7484; --chip-bg: #232a38; --code: #cbd5e1;
+      --next-bg: #101830; --next-line: #2040a0;
+      --blocked-bg: #2f2010; --blocked-line: #6a4a10;
+      --done-bg: #1a2f1a; --done-line: #2a5a2a;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.55 "Segoe UI", system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 10px; }
+  .updated { color: var(--muted); font-size: 13px; margin: 24px 0 28px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 34px 0 12px; padding: 0; border: none; }
+
+  /* ---- Group A: compact list ---- */
+  ul.compact { list-style: none; padding: 0; margin: 0; }
+  ul.compact li { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; margin-bottom: 6px; font-size: 14px; display: block; }
+  ul.compact li b { color: var(--warn); }
+  ul.compact li .tag { float: right; font-size: 12px; color: var(--muted); background: var(--chip-bg); border-radius: 20px; padding: 1px 9px; margin-left: 8px; }
+  ul.compact.done li, .compact.done li { color: var(--done-ink); }
+  ul.compact.done li b { color: var(--done-ink); }
+  ul.compact.done li::before, .compact.done li::before { content: "\2714 "; color: var(--good); }
+
+  /* ---- Group B: kanban panels ---- */
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .plan, .open-q { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  .open-q { margin-top: 24px; }
+  .plan h2, .open-q h2 { margin: 0 0 14px; }
+  .plan ul, .open-q ul { list-style: none; padding: 0; margin: 0; }
+  .plan li, .open-q li { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 6px; margin-bottom: 4px; border: 1px solid var(--line); background: var(--bg); }
+  li.done { background: var(--done-bg); border-color: var(--done-line); color: var(--done-ink); }
+  li.done .label { text-decoration: line-through; }
+  li.blocked { background: var(--blocked-bg); border-color: var(--blocked-line); }
+  li.next { background: var(--next-bg); border-color: var(--next-line); }
+  .icon { flex-shrink: 0; margin-top: 2px; }
+  .label { flex: 1; font-size: 14px; line-height: 1.4; }
+  .plan li .tag, .open-q li .tag { float: none; align-self: center; font-size: 12px; background: var(--chip-bg); border-radius: 20px; padding: 1px 9px; color: var(--muted); white-space: nowrap; }
+  li.done .tag { background: var(--done-line); color: var(--good); }
+  li.blocked .tag { color: var(--warn); }
+  li.next .tag { color: var(--accent); }
+  .divider { border: none; border-top: 1px dashed var(--line); margin: 8px 0; }
+
+  /* ---- extras: cards / chips / status (fractional-ai, _ideas) ---- */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+  .card h3 { font-size: 16px; margin-bottom: 3px; }
+  .card p { color: var(--muted); font-size: 13.5px; }
+  .card .next { margin-top: 6px; font-size: 13.5px; color: var(--ink); background: none; border: none; padding: 0; display: block; }
+  .card .next b { color: var(--warn); }
+  .chips { margin-top: 8px; }
+  .chip { display: inline-block; background: var(--chip-bg); border-radius: 20px; padding: 2px 10px; font-size: 12px; color: var(--muted); margin: 2px 4px 0 0; }
+  .status { float: right; font-size: 12px; font-weight: 600; border-radius: 20px; padding: 2px 10px; }
+  .s-active, .ok { color: var(--good); border: 1px solid var(--good); }
+  .s-next { color: var(--accent); border: 1px solid var(--accent); }
+  .s-parked, .na { color: var(--warn); border: 1px solid var(--warn); }
+
+  /* ---- shared inline bits ---- */
+  code, .cmd { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; color: var(--code); background: var(--chip-bg); border-radius: 4px; padding: 1px 5px; word-break: break-word; }
+  .tag { font-size: 12px; color: var(--muted); background: var(--chip-bg); border-radius: 20px; padding: 1px 9px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .ps-link, .doc { display: inline-block; font-size: 13px; color: var(--good); text-decoration: none; border: 1px solid var(--good); border-radius: 5px; padding: 3px 10px; margin-bottom: 16px; }
+  .ps-link:hover, .doc:hover { background: var(--chip-bg); }
+  .src { color: var(--muted); font-size: 12px; margin-top: 30px; border-top: 1px solid var(--line); padding-top: 10px; }
+</style>
 </head>
 <body>
 
